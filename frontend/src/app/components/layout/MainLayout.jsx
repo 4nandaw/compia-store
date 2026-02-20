@@ -13,7 +13,11 @@ export function MainLayout() {
           <Outlet />
         </main>
         <Footer />
-        <Toaster position="top-right" />
+        <Toaster 
+          position="top-right"
+          richColors
+          expand={false}
+        />
       </div>
     </CartProvider>
   );
