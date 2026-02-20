@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { toast } from 'sonner';
-import { PRODUCTS } from '../data/mockData';
 
 const CartContext = createContext(undefined);
 
