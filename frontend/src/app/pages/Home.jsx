@@ -145,15 +145,19 @@ export function Home() {
             Receba descontos exclusivos, lançamentos de livros e artigos sobre o mundo da tecnologia diretamente no seu e-mail.
           </p>
           
-          <form className="max-w-md mx-auto flex flex-col sm:flex-row gap-4">
+          <form
+            className="max-w-xl mx-auto flex flex-col sm:flex-row gap-3 sm:gap-0 rounded-2xl overflow-hidden shadow-xl ring-1 ring-white/10"
+            onSubmit={(e) => e.preventDefault()}
+          >
             <input
               type="email"
               placeholder="Seu melhor e-mail"
-              className="flex-1 px-6 py-4 rounded-lg bg-white/10 text-white placeholder-gray-400 border border-white/20 focus:outline-none focus:border-[#00C2FF] transition-colors"
+              aria-label="E-mail para newsletter"
+              className="flex-1 min-w-0 px-5 sm:px-6 py-4 bg-white/5 text-white placeholder-gray-400 border-0 focus:outline-none focus:ring-2 focus:ring-[#00C2FF] focus:ring-inset transition-all"
             />
             <button
-              type="button"
-              className="px-8 py-4 bg-[#00C2FF] text-[#0A192F] font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-all shadow-[0_0_20px_rgba(0,194,255,0.4)]"
+              type="submit"
+              className="px-6 sm:px-8 py-4 bg-[#00C2FF] text-[#0A192F] font-bold rounded-none sm:rounded-r-xl hover:bg-[#00C2FF]/90 active:scale-[0.98] transition-all shadow-[0_0_24px_rgba(0,194,255,0.35)] whitespace-nowrap"
             >
               Inscrever-se
             </button>
