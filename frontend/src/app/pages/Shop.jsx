@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { Filter, ChevronDown } from "lucide-react";
-import { PRODUCTS, CATEGORIES } from "../data/mockData";
+import { useProducts } from "../context/ProductContext";
 import { ProductCard } from "../components/ProductCard";
 
 export function Shop() {
+  const { products, categories } = useProducts();
   const [searchParams, setSearchParams] = useSearchParams();
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
 
@@ -15,10 +16,10 @@ export function Shop() {
 
   // Filter Logic
   const filteredProducts = useMemo(() => {
-    let result = [...PRODUCTS];
+    let result = [...products];
 
     if (selectedCategory) {
-      const categoryMatch = CATEGORIES.find((c) => c.id === selectedCategory);
+      const categoryMatch = categories.find((c) => c.id === selectedCategory);
       const categoryName = categoryMatch ? categoryMatch.name : selectedCategory;
       result = result.filter(
         (p) =>
@@ -50,7 +51,7 @@ export function Shop() {
     }
 
     return result;
-  }, [selectedCategory, selectedType, sortOrder]);
+  }, [products, categories, selectedCategory, selectedType, sortOrder]);
 
   const handleFilterChange = (key, value) => {
     const newParams = new URLSearchParams(searchParams);
@@ -112,7 +113,7 @@ export function Shop() {
               <div>
                 <h4 className="font-semibold text-gray-700 mb-3">Categoria</h4>
                 <div className="space-y-2">
-                  {CATEGORIES.map((cat) => (
+                  {categories.map((cat) => (
                     <label key={cat.id} className="flex items-center gap-2 cursor-pointer">
                       <input
                         type="radio"
