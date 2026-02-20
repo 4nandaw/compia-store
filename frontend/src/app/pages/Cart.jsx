@@ -5,6 +5,8 @@ import { useCart } from "../context/CartContext";
 export function Cart() {
   const { cart, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
 
+  const hasFreeShipping = cartTotal >= 200;
+
   if (cart.length === 0) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 py-20">
@@ -108,7 +110,9 @@ export function Cart() {
                 </div>
                 <div className="flex justify-between text-gray-600">
                   <span>Frete</span>
-                  <span className="text-[#00C2FF]">Grátis</span>
+                  <span className={hasFreeShipping ? "text-[#00C2FF]" : "text-gray-600"}>
+                    {hasFreeShipping ? "Grátis" : "A calcular"}
+                  </span>
                 </div>
                 <div className="border-t border-gray-200 pt-4 flex justify-between text-lg font-bold text-[#0A192F]">
                   <span>Total</span>
