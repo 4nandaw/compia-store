@@ -1,16 +1,20 @@
 import { useState } from "react";
-import { Link } from "react-router";
-import { ArrowLeft } from "lucide-react";
+import { Link, useNavigate } from "react-router";
+import { ArrowLeft, Truck, MapPin, Download } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { toast } from "sonner";
 
+const STORE_PICKUP_ADDRESS = "Av. Paulista, 1000 - São Paulo, SP. Seg a Sex, 9h às 18h.";
+
 export function Checkout() {
-  const { cart, cartTotal } = useCart();
+  const { cart, cartTotal, clearCart } = useCart();
+  const navigate = useNavigate();
 
   const hasPhysicalItems = cart.some((item) => item.type !== "ebook");
   const hasDigitalItems = cart.some((item) => item.type === "ebook");
   const hasMixedItems = hasPhysicalItems && hasDigitalItems;
 
+  const [deliveryMethod, setDeliveryMethod] = useState("shipping"); // 'shipping' | 'pickup'
   const [cep, setCep] = useState("");
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -148,6 +152,7 @@ export function Checkout() {
   };
 
   const handleCepBlur = async () => {
+    if (deliveryMethod !== "shipping") return;
     if (!cep) return;
     if (cep.length !== 8) {
       toast.error("CEP deve ter 8 dígitos.");
@@ -176,7 +181,6 @@ export function Checkout() {
       setCity(data.localidade || "");
       setStateUf(data.uf || "");
 
-      // Calcular frete usando a função de cálculo
       const shipping = await calculateShipping(cep, cart);
       setShippingCost(shipping.cost);
       setShippingInfo(shipping);
@@ -186,6 +190,42 @@ export function Checkout() {
     } finally {
       setIsCepLoading(false);
     }
+  };
+
+  const effectiveShippingCost = deliveryMethod === "pickup" ? 0 : (shippingCost ?? 0);
+  const effectiveShippingInfo = deliveryMethod === "pickup"
+    ? { cost: 0, days: 0, service: "Retirada no local" }
+    : shippingInfo;
+
+  const handleDeliveryMethodChange = (method) => {
+    setDeliveryMethod(method);
+    if (method === "pickup") {
+      setShippingCost(0);
+      setShippingInfo({ cost: 0, days: 0, service: "Retirada no local" });
+    } else {
+      setShippingCost(null);
+      setShippingInfo(null);
+    }
+  };
+
+  const handleConfirmOrder = () => {
+    const order = {
+      id: `order-${Date.now()}`,
+      date: new Date().toISOString(),
+      items: cart.map(({ id, title, author, type, price, quantity, image }) => ({ id, title, author, type, price, quantity, image })),
+      subtotal: cartTotal,
+      shippingCost: hasPhysicalItems ? effectiveShippingCost : 0,
+      total: cartTotal + (hasPhysicalItems ? effectiveShippingCost : 0),
+      deliveryMethod: hasPhysicalItems ? deliveryMethod : "digital",
+      shippingInfo: hasPhysicalItems ? effectiveShippingInfo : null,
+      pickupAddress: deliveryMethod === "pickup" ? STORE_PICKUP_ADDRESS : null,
+    };
+    const orders = JSON.parse(localStorage.getItem("compia_orders") || "[]");
+    orders.push(order);
+    localStorage.setItem("compia_orders", JSON.stringify(orders));
+    clearCart();
+    toast.success("Pedido realizado com sucesso!");
+    navigate("/order-success", { state: { order } });
   };
 
   if (cart.length === 0) {
@@ -210,52 +250,101 @@ export function Checkout() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           <div className="lg:col-span-2 space-y-6">
-            {/* Shipping Info */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <h2 className="text-xl font-bold text-[#0A192F] mb-4">Informações de Entrega</h2>
-              <form className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <input type="text" placeholder="Nome completo" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
-                  <input type="email" placeholder="E-mail" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
+            {/* Forma de entrega (apenas se tiver itens físicos) */}
+            {hasPhysicalItems && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold text-[#0A192F] mb-4">Forma de Entrega</h2>
+                <div className="flex flex-col sm:flex-row gap-4">
+                  <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${deliveryMethod === "shipping" ? "border-[#00C2FF] bg-[#00C2FF]/5" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input type="radio" name="delivery" value="shipping" checked={deliveryMethod === "shipping"} onChange={() => handleDeliveryMethodChange("shipping")} className="sr-only" />
+                    <Truck className="w-6 h-6 text-[#00C2FF]" />
+                    <div>
+                      <span className="font-semibold text-[#0A192F]">Envio (Correios)</span>
+                      <p className="text-sm text-gray-500">Entrega no endereço informado. Consulte frete pelo CEP abaixo.</p>
+                    </div>
+                  </label>
+                  <label className={`flex items-center gap-3 p-4 rounded-lg border-2 cursor-pointer transition-colors ${deliveryMethod === "pickup" ? "border-[#00C2FF] bg-[#00C2FF]/5" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input type="radio" name="delivery" value="pickup" checked={deliveryMethod === "pickup"} onChange={() => handleDeliveryMethodChange("pickup")} className="sr-only" />
+                    <MapPin className="w-6 h-6 text-[#00C2FF]" />
+                    <div>
+                      <span className="font-semibold text-[#0A192F]">Retirada no local</span>
+                      <p className="text-sm text-gray-500">Sem frete. Retire na loja.</p>
+                    </div>
+                  </label>
                 </div>
-                <input
-                  type="text"
-                  placeholder="Endereço"
-                  className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
-                  value={address}
-                  onChange={(event) => setAddress(event.target.value)}
-                  disabled={isCepLoading}
-                />
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    placeholder="CEP"
-                    className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
-                    value={formattedCep}
-                    onChange={handleCepChange}
-                    onBlur={handleCepBlur}
-                    maxLength={9}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Cidade"
-                    className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
-                    value={city}
-                    onChange={(event) => setCity(event.target.value)}
-                    disabled={isCepLoading}
-                  />
-                  <input
-                    type="text"
-                    placeholder="Estado"
-                    className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
-                    value={stateUf}
-                    onChange={(event) => setStateUf(event.target.value)}
-                    disabled={isCepLoading}
-                  />
-                </div>
-              </form>
-            </div>
+                {deliveryMethod === "pickup" && (
+                  <p className="mt-4 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg flex items-center gap-2">
+                    <MapPin size={16} /> {STORE_PICKUP_ADDRESS}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {hasDigitalItems && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold text-[#0A192F] mb-2 flex items-center gap-2">
+                  <Download size={20} /> E-books
+                </h2>
+                <p className="text-gray-600 text-sm">
+                  Após a confirmação do pagamento, os e-books ficarão disponíveis na aba <strong>Downloads</strong> do seu perfil e um link de acesso será enviado por e-mail.
+                </p>
+              </div>
+            )}
+
+            {/* Informações de entrega (apenas quando há itens físicos) */}
+            {hasPhysicalItems && (
+              <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+                <h2 className="text-xl font-bold text-[#0A192F] mb-4">
+                  {deliveryMethod === "pickup" ? "Dados para contato" : "Informações de Entrega"}
+                </h2>
+                <form className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="text" placeholder="Nome completo" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
+                    <input type="email" placeholder="E-mail" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
+                  </div>
+                  {deliveryMethod === "shipping" && (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="Endereço"
+                        className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
+                        value={address}
+                        onChange={(event) => setAddress(event.target.value)}
+                        disabled={isCepLoading}
+                      />
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          placeholder="CEP"
+                          className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                          value={formattedCep}
+                          onChange={handleCepChange}
+                          onBlur={handleCepBlur}
+                          maxLength={9}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Cidade"
+                          className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
+                          value={city}
+                          onChange={(event) => setCity(event.target.value)}
+                          disabled={isCepLoading}
+                        />
+                        <input
+                          type="text"
+                          placeholder="Estado"
+                          className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF] disabled:bg-gray-100 disabled:text-gray-400"
+                          value={stateUf}
+                          onChange={(event) => setStateUf(event.target.value)}
+                          disabled={isCepLoading}
+                        />
+                      </div>
+                    </>
+                  )}
+                </form>
+              </div>
+            )}
 
             {/* Payment Info */}
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
@@ -286,28 +375,26 @@ export function Checkout() {
                   <span>Subtotal</span>
                   <span>R$ {cartTotal.toFixed(2).replace('.', ',')}</span>
                 </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>
-                    Frete{" "}
-                    {!hasPhysicalItems
-                      ? "(produtos digitais)"
-                      : hasMixedItems
-                      ? "(apenas produtos físicos)"
-                      : shippingInfo?.service && `(${shippingInfo.service})`}
-                  </span>
-                  <span>
-                    {!hasPhysicalItems
-                      ? "Sem frete"
-                      : shippingCost === null
-                      ? "A calcular"
-                      : shippingCost === 0
-                      ? "Grátis"
-                      : `R$ ${shippingCost.toFixed(2).replace('.', ',')}`}
-                  </span>
-                </div>
-                {hasPhysicalItems && shippingInfo && shippingInfo.days > 0 && (
+                {hasPhysicalItems && deliveryMethod !== "pickup" && (
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>
+                      Frete{" "}
+                      {hasMixedItems ? "(apenas produtos físicos)" : effectiveShippingInfo?.service && `(${effectiveShippingInfo.service})`}
+                    </span>
+                    <span>
+                      {deliveryMethod === "shipping" && cartTotal >= 200
+                        ? "Grátis"
+                        : shippingCost === null
+                        ? "A calcular"
+                        : effectiveShippingCost === 0
+                        ? "Grátis"
+                        : `R$ ${effectiveShippingCost.toFixed(2).replace('.', ',')}`}
+                    </span>
+                  </div>
+                )}
+                {hasPhysicalItems && deliveryMethod === "shipping" && effectiveShippingInfo && effectiveShippingInfo.days > 0 && (
                   <p className="text-xs text-gray-500 text-right">
-                    Prazo de entrega: {shippingInfo.days} {shippingInfo.days === 1 ? 'dia útil' : 'dias úteis'}
+                    Prazo de entrega: {effectiveShippingInfo.days} {effectiveShippingInfo.days === 1 ? 'dia útil' : 'dias úteis'}
                   </p>
                 )}
                 <div className="border-t border-gray-200 pt-4 flex justify-between font-bold text-lg">
@@ -315,13 +402,17 @@ export function Checkout() {
                   <span>
                     R$ {(
                       cartTotal +
-                      (hasPhysicalItems ? shippingCost ?? 0 : 0)
+                      (hasPhysicalItems ? effectiveShippingCost : 0)
                     ).toFixed(2).replace('.', ',')}
                   </span>
                 </div>
               </div>
 
-              <button className="w-full px-6 py-4 bg-[#00C2FF] text-white font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-all shadow-lg">
+              <button
+                type="button"
+                onClick={handleConfirmOrder}
+                className="w-full px-6 py-4 bg-[#00C2FF] text-white font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-all shadow-lg"
+              >
                 Confirmar Pedido
               </button>
             </div>

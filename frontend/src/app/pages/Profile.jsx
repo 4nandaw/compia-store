@@ -1,9 +1,49 @@
-import { useState } from "react";
-import { Link } from "react-router";
+import { useState, useEffect } from "react";
+import { Link, useSearchParams } from "react-router";
 import { User, Package, Download, Settings, LogOut } from "lucide-react";
 
+function getOrders() {
+  try {
+    return JSON.parse(localStorage.getItem("compia_orders") || "[]");
+  } catch {
+    return [];
+  }
+}
+
+function getPurchasedEbooks() {
+  const orders = getOrders();
+  const ebooks = [];
+  orders.forEach((order) => {
+    (order.items || []).filter((i) => i.type === "ebook").forEach((item) => {
+      for (let q = 0; q < (item.quantity || 1); q++) {
+        ebooks.push({ ...item, orderId: order.id, orderDate: order.date });
+      }
+    });
+  });
+  return ebooks;
+}
+
+const VALID_TABS = ["orders", "downloads", "settings"];
+
 export function Profile() {
-  const [activeTab, setActiveTab] = useState("orders");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab");
+  const [activeTab, setActiveTab] = useState(
+    tabFromUrl && VALID_TABS.includes(tabFromUrl) ? tabFromUrl : "orders"
+  );
+
+  useEffect(() => {
+    if (tabFromUrl && VALID_TABS.includes(tabFromUrl) && tabFromUrl !== activeTab) {
+      setActiveTab(tabFromUrl);
+    }
+  }, [tabFromUrl]);
+
+  const setActiveTabAndUrl = (tab) => {
+    setActiveTab(tab);
+    setSearchParams(tab === "orders" ? {} : { tab });
+  };
+
+  const purchasedEbooks = activeTab === "downloads" ? getPurchasedEbooks() : [];
 
   return (
     <div className="bg-gray-50 min-h-screen py-10">
@@ -26,21 +66,21 @@ export function Profile() {
               <nav className="p-2 space-y-1">
                 <button
                   type="button"
-                  onClick={() => setActiveTab("orders")}
+                  onClick={() => setActiveTabAndUrl("orders")}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'orders' ? 'bg-[#00C2FF]/10 text-[#00C2FF]' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <Package size={18} /> Meus Pedidos
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("downloads")}
+                  onClick={() => setActiveTabAndUrl("downloads")}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'downloads' ? 'bg-[#00C2FF]/10 text-[#00C2FF]' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <Download size={18} /> Downloads
                 </button>
                 <button
                   type="button"
-                  onClick={() => setActiveTab("settings")}
+                  onClick={() => setActiveTabAndUrl("settings")}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'settings' ? 'bg-[#00C2FF]/10 text-[#00C2FF]' : 'text-gray-600 hover:bg-gray-50'}`}
                 >
                   <Settings size={18} /> Configurações
@@ -63,43 +103,72 @@ export function Profile() {
             {activeTab === "orders" && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-xl font-bold text-[#0A192F] mb-6">Histórico de Pedidos</h2>
-                <div className="space-y-4">
-                  {[1, 2, 3].map((order) => (
-                    <div key={order} className="border border-gray-100 rounded-lg p-4 hover:border-[#00C2FF]/30 transition-colors">
-                      <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-                        <div>
-                          <p className="font-bold text-[#0A192F]">Pedido #{1000 + order}</p>
-                          <p className="text-sm text-gray-500">Realizado em {20 - order}/02/2026</p>
+                {getOrders().length === 0 ? (
+                  <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl text-gray-500">
+                    Nenhum pedido realizado ainda. <Link to="/shop" className="text-[#00C2FF] hover:underline">Ver loja</Link>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {getOrders().slice().reverse().map((order) => (
+                      <div key={order.id} className="border border-gray-100 rounded-lg p-4 hover:border-[#00C2FF]/30 transition-colors">
+                        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+                          <div>
+                            <p className="font-bold text-[#0A192F]">{order.id}</p>
+                            <p className="text-sm text-gray-500">
+                              {order.date ? new Date(order.date).toLocaleDateString("pt-BR") : "—"}
+                            </p>
+                          </div>
+                          <span className="px-3 py-1 rounded-full text-xs font-bold bg-green-100 text-green-700">
+                            Confirmado
+                          </span>
                         </div>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${order === 1 ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}`}>
-                          {order === 1 ? 'Em Processamento' : 'Entregue'}
-                        </span>
+                        <div className="flex items-center justify-between border-t border-gray-50 pt-4">
+                          <p className="text-sm text-gray-600">
+                            Total: <span className="font-bold">R$ {(order.total ?? 0).toFixed(2).replace(".", ",")}</span>
+                            {order.deliveryMethod === "pickup" && " (retirada no local)"}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center justify-between border-t border-gray-50 pt-4">
-                         <p className="text-sm text-gray-600">Total: <span className="font-bold">R$ {Math.floor(Math.random() * 500) + 100},00</span></p>
-                         <button type="button" className="text-sm text-[#00C2FF] font-medium hover:underline">Ver Detalhes</button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
             {activeTab === "downloads" && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-                <h2 className="text-xl font-bold text-[#0A192F] mb-6">Meus E-books</h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="border border-gray-100 rounded-lg p-4 flex gap-4">
-                      <div className="w-16 h-20 bg-gray-200 rounded flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-bold text-[#0A192F] text-sm">Mastering Blockchain</h3>
-                        <p className="text-xs text-gray-500 mb-3">Imran Bashir</p>
-                        <button type="button" className="flex items-center gap-2 px-3 py-1.5 bg-[#00C2FF] text-white text-xs font-bold rounded hover:bg-[#00C2FF]/90 transition-colors">
-                          <Download size={14} /> Baixar PDF
-                        </button>
+                <h2 className="text-xl font-bold text-[#0A192F] mb-2">Meus E-books</h2>
+                <p className="text-sm text-gray-500 mb-6">Área restrita: e-books comprados ficam disponíveis aqui para download.</p>
+                {purchasedEbooks.length === 0 ? (
+                  <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
+                    <Download className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <p className="text-gray-500">Nenhum e-book comprado ainda.</p>
+                    <Link to="/shop" className="mt-3 inline-block text-[#00C2FF] font-medium hover:underline">Ver catálogo</Link>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {purchasedEbooks.map((item, index) => (
+                      <div key={`${item.id}-${item.orderId}-${index}`} className="border border-gray-100 rounded-lg p-4 flex gap-4">
+                        <div className="w-16 h-20 bg-gray-200 rounded flex-shrink-0 overflow-hidden">
+                          {item.image ? (
+                            <img src={item.image} alt="" className="w-full h-full object-cover" />
+                          ) : null}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-bold text-[#0A192F] text-sm">{item.title}</h3>
+                          <p className="text-xs text-gray-500 mb-3">{item.author || "—"}</p>
+                          <a
+                            href="#"
+                            onClick={(e) => e.preventDefault()}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[#00C2FF] text-white text-xs font-bold rounded hover:bg-[#00C2FF]/90 transition-colors w-fit"
+                          >
+                            <Download size={14} /> Baixar PDF
+                          </a>
+                        </div>
                       </div>
-                   </div>
-                </div>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
              
