@@ -1,16 +1,17 @@
 import { useParams, Link } from "react-router";
 import { useState } from "react";
 import { Star, Truck, Shield, Check, ShoppingCart, ArrowLeft, Plus, Minus } from "lucide-react";
-import { PRODUCTS } from "../data/mockData";
+import { useProducts } from "../context/ProductContext";
 import { useCart } from "../context/CartContext";
 import { ProductCard } from "../components/ProductCard";
 
 export function ProductDetail() {
   const { id } = useParams();
+  const { products, getProductById } = useProducts();
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
   
-  const product = PRODUCTS.find((p) => p.id === id);
+  const product = getProductById(id);
   
   if (!product) {
     return (
@@ -23,7 +24,7 @@ export function ProductDetail() {
     );
   }
 
-  const relatedProducts = PRODUCTS.filter(
+  const relatedProducts = products.filter(
     (p) => p.category === product.category && p.id !== product.id
   ).slice(0, 4);
 
