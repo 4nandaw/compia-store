@@ -17,6 +17,7 @@ export function MainLayout() {
           <Footer />
           <Toaster 
             position="top-right"
+            offset={80}
             richColors
             expand={false}
           />
