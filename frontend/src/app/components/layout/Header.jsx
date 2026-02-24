@@ -1,13 +1,13 @@
 import { Link, useLocation } from "react-router";
-import { Search, ShoppingCart, User, Menu, X, Bell } from "lucide-react";
+import { Search, ShoppingCart, User, Menu, X, Bell, LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useCart } from "../../context/CartContext";
-import { getNotificationsByRole } from "../../utils/notifications";
+import { useAuth } from "../../context/AuthContext";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const { cartCount } = useCart();
+  const { isLoggedIn, user, isAdmin } = useAuth();
   const location = useLocation();
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
@@ -31,13 +31,6 @@ export function Header() {
     return true;
   };
 
-  useEffect(() => {
-    // Atualiza contagem de notificações não lidas do cliente
-    const customerNotifs = getNotificationsByRole("customer");
-    const unread = customerNotifs.filter((n) => !n.read).length;
-    setUnreadNotifications(unread);
-  }, [location.pathname, location.search]);
-
   return (
     <header className="sticky top-0 z-50 w-full border-b border-[#0A192F]/10 bg-white/95 backdrop-blur-md">
       <div className="container mx-auto px-4 h-16 flex items-center justify-between">
@@ -57,9 +50,8 @@ export function Header() {
             <Link
               key={link.path}
               to={link.path}
-              className={`text-sm font-medium transition-colors hover:text-[#00C2FF] ${
-                isLinkActive(link) ? "text-[#00C2FF]" : "text-gray-600"
-              }`}
+              className={`text-sm font-medium transition-colors hover:text-[#00C2FF] ${isLinkActive(link) ? "text-[#00C2FF]" : "text-gray-600"
+                }`}
             >
               {link.name}
             </Link>
@@ -67,7 +59,7 @@ export function Header() {
         </nav>
 
         {/* Actions */}
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           <div className="relative hidden md:flex items-center">
             <input
               type="text"
@@ -77,21 +69,27 @@ export function Header() {
             <Search className="absolute right-3 h-4 w-4 text-gray-400" />
           </div>
 
-          <Link to="/profile" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative group">
-            <User className="h-5 w-5 text-[#0A192F]" />
-             <span className="absolute hidden group-hover:block top-full right-0 bg-[#0A192F] text-white text-xs px-2 py-1 rounded shadow-lg mt-1 w-max">
-               Minha Conta
-             </span>
-          </Link>
-
-          <Link to="/profile?tab=notifications" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative">
-            <Bell className="h-5 w-5 text-[#0A192F]" />
-            {unreadNotifications > 0 && (
-              <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-white">
-                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+          {isLoggedIn ? (
+            <Link to="/profile" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative group flex items-center gap-2">
+              <User className="h-5 w-5 text-[#0A192F]" />
+              <span className="hidden md:inline text-sm font-medium text-[#0A192F] max-w-[100px] truncate">
+                {user?.name?.split(" ")[0]}
               </span>
-            )}
-          </Link>
+              {isAdmin && (
+                <span className="hidden md:inline px-1.5 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-700 rounded-full">
+                  ADM
+                </span>
+              )}
+            </Link>
+          ) : (
+            <Link
+              to="/login"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#0A192F] hover:bg-gray-100 rounded-full transition-colors"
+            >
+              <LogIn className="h-4 w-4" />
+              <span className="hidden md:inline">Entrar</span>
+            </Link>
+          )}
 
           <Link to="/cart" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative">
             <ShoppingCart className="h-5 w-5 text-[#0A192F]" />
@@ -114,34 +112,43 @@ export function Header() {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-          <div
-            className="md:hidden border-t border-gray-100 bg-white"
-          >
-            <div className="container mx-auto px-4 py-4 flex flex-col gap-4">
-               <div className="relative flex items-center w-full">
-                <input
-                  type="text"
-                  placeholder="Buscar..."
-                  className="pl-3 pr-10 py-2 text-sm rounded-lg bg-gray-100 w-full focus:outline-none focus:ring-2 focus:ring-[#00C2FF]/50"
-                />
-                <Search className="absolute right-3 h-4 w-4 text-gray-400" />
-              </div>
-              
-              {navLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  onClick={() => setIsMenuOpen(false)}
-                  className={`flex items-center gap-3 py-2 font-medium transition-colors hover:text-[#00C2FF] ${
-                    isLinkActive(link) ? "text-[#00C2FF]" : "text-gray-700"
-                  }`}
-                >
-                    {link.name}
-                </Link>
-              ))}
+        <div
+          className="md:hidden border-t border-gray-100 bg-white"
+        >
+          <div className="container mx-auto px-4 py-4 flex flex-col gap-4">
+            <div className="relative flex items-center w-full">
+              <input
+                type="text"
+                placeholder="Buscar..."
+                className="pl-3 pr-10 py-2 text-sm rounded-lg bg-gray-100 w-full focus:outline-none focus:ring-2 focus:ring-[#00C2FF]/50"
+              />
+              <Search className="absolute right-3 h-4 w-4 text-gray-400" />
             </div>
+
+            {navLinks.map((link) => (
+              <Link
+                key={link.path}
+                to={link.path}
+                onClick={() => setIsMenuOpen(false)}
+                className={`flex items-center gap-3 py-2 font-medium transition-colors hover:text-[#00C2FF] ${isLinkActive(link) ? "text-[#00C2FF]" : "text-gray-700"
+                  }`}
+              >
+                {link.name}
+              </Link>
+            ))}
+
+            {!isLoggedIn && (
+              <Link
+                to="/login"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-2 py-2 font-medium text-[#00C2FF]"
+              >
+                <LogIn className="h-5 w-5" /> Entrar / Criar Conta
+              </Link>
+            )}
           </div>
-        )}
+        </div>
+      )}
     </header>
   );
 }

@@ -1,6 +1,12 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { PRODUCTS as INITIAL_PRODUCTS, CATEGORIES } from '../data/mockData';
+import { CATEGORIES } from '../data/mockData';
 import { toast } from 'sonner';
+import {
+  fetchProducts as apiFetchProducts,
+  apiCreateProduct,
+  apiUpdateProduct,
+  apiDeleteProduct,
+} from '../services/api';
 
 const ProductContext = createContext(undefined);
 
@@ -8,30 +14,33 @@ export function ProductProvider({ children }) {
   const [products, setProducts] = useState([]);
   const [categories] = useState(CATEGORIES);
   const [reviews, setReviews] = useState({});
+  const [loading, setLoading] = useState(true);
 
-  // Carregar produtos do localStorage ou usar dados iniciais
+  // Carregar produtos da API
   useEffect(() => {
-    const savedProducts = localStorage.getItem('compia_products');
-    if (savedProducts) {
-      try {
-        setProducts(JSON.parse(savedProducts));
-      } catch (e) {
-        console.error("Erro ao carregar produtos:", e);
-        setProducts(INITIAL_PRODUCTS);
-      }
-    } else {
-      setProducts(INITIAL_PRODUCTS);
-    }
+    loadProducts();
   }, []);
 
-  // Salvar produtos no localStorage sempre que houver mudança
-  useEffect(() => {
-    if (products.length > 0) {
-      localStorage.setItem('compia_products', JSON.stringify(products));
+  const loadProducts = async () => {
+    try {
+      setLoading(true);
+      const data = await apiFetchProducts();
+      setProducts(data);
+    } catch (e) {
+      console.error("Erro ao carregar produtos da API:", e);
+      // Fallback: tentar localStorage
+      try {
+        const saved = localStorage.getItem('compia_products');
+        if (saved) setProducts(JSON.parse(saved));
+      } catch {
+        /* silencioso */
+      }
+    } finally {
+      setLoading(false);
     }
-  }, [products]);
+  };
 
-  // Carregar / salvar avaliações de produtos
+  // Carregar / salvar avaliações de produtos (mantém localStorage)
   useEffect(() => {
     const savedReviews = localStorage.getItem('compia_reviews');
     if (savedReviews) {
@@ -47,30 +56,65 @@ export function ProductProvider({ children }) {
     localStorage.setItem('compia_reviews', JSON.stringify(reviews));
   }, [reviews]);
 
-  const createProduct = (productData) => {
-    const newProduct = {
-      ...productData,
-      id: Date.now().toString(),
-      rating: productData.rating || 0,
-      reviewsCount: productData.reviewsCount || 0,
-      isNew: productData.isNew || false,
-      isBestSeller: productData.isBestSeller || false,
-    };
-    setProducts((prev) => [...prev, newProduct]);
-    toast.success(`Produto "${newProduct.title}" cadastrado com sucesso!`);
-    return newProduct;
+  const createProduct = async (productData) => {
+    try {
+      // Mapeia os campos para snake_case para a API
+      const apiData = {
+        title: productData.title,
+        author: productData.author,
+        price: parseFloat(productData.price) || 0,
+        original_price: productData.originalPrice ? parseFloat(productData.originalPrice) : null,
+        description: productData.description || "",
+        image: productData.image || "",
+        category: productData.category,
+        type: productData.type || "book",
+        stock: parseInt(productData.stock) || 0,
+        is_new: productData.isNew || false,
+        is_best_seller: productData.isBestSeller || false,
+      };
+      const newProduct = await apiCreateProduct(apiData);
+      setProducts((prev) => [...prev, newProduct]);
+      toast.success(`Produto "${newProduct.title}" cadastrado com sucesso!`);
+      return newProduct;
+    } catch (e) {
+      toast.error(e.message || "Erro ao cadastrar produto.");
+      throw e;
+    }
   };
 
-  const updateProduct = (id, productData) => {
-    setProducts((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, ...productData } : p))
-    );
-    toast.success(`Produto atualizado com sucesso!`);
+  const updateProduct = async (id, productData) => {
+    try {
+      const apiData = {};
+      if (productData.title !== undefined) apiData.title = productData.title;
+      if (productData.author !== undefined) apiData.author = productData.author;
+      if (productData.price !== undefined) apiData.price = parseFloat(productData.price) || 0;
+      if (productData.originalPrice !== undefined) apiData.original_price = productData.originalPrice ? parseFloat(productData.originalPrice) : null;
+      if (productData.description !== undefined) apiData.description = productData.description;
+      if (productData.image !== undefined) apiData.image = productData.image;
+      if (productData.category !== undefined) apiData.category = productData.category;
+      if (productData.type !== undefined) apiData.type = productData.type;
+      if (productData.stock !== undefined) apiData.stock = parseInt(productData.stock) || 0;
+      if (productData.isNew !== undefined) apiData.is_new = productData.isNew;
+      if (productData.isBestSeller !== undefined) apiData.is_best_seller = productData.isBestSeller;
+
+      const updated = await apiUpdateProduct(id, apiData);
+      setProducts((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      toast.success(`Produto atualizado com sucesso!`);
+    } catch (e) {
+      toast.error(e.message || "Erro ao atualizar produto.");
+      throw e;
+    }
   };
 
-  const deleteProduct = (id) => {
-    setProducts((prev) => prev.filter((p) => p.id !== id));
-    toast.success("Produto excluído com sucesso!");
+  const deleteProduct = async (id) => {
+    try {
+      await apiDeleteProduct(id);
+      setProducts((prev) => prev.filter((p) => p.id !== id));
+      toast.success("Produto excluído com sucesso!");
+    } catch (e) {
+      toast.error(e.message || "Erro ao excluir produto.");
+      throw e;
+    }
   };
 
   const getProductById = (id) => {
@@ -127,12 +171,14 @@ export function ProductProvider({ children }) {
       value={{
         products,
         categories,
+        loading,
         createProduct,
         updateProduct,
         deleteProduct,
         getProductById,
         getReviewsForProduct,
         addReviewToProduct,
+        refreshProducts: loadProducts,
       }}
     >
       {children}

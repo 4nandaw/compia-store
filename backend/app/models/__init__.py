@@ -1,7 +1,12 @@
 """
-Modelos de dados (ex.: modelos ORM) da aplicação.
+Modelos de dados (ORM SQLAlchemy) da aplicação.
 
-Nesta fase não há definição de entidades de domínio,
-apenas a estrutura de pastas para futura implementação.
+Importar todos os modelos aqui para que Base.metadata.create_all() funcione.
 """
 
+from app.models.user import User
+from app.models.product import Product
+from app.models.order import Order, OrderItem
+from app.models.notification import Notification
+
+__all__ = ["User", "Product", "Order", "OrderItem", "Notification"]

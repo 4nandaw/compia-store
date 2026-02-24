@@ -4,6 +4,7 @@ import { ArrowLeft, Truck, MapPin, Download, Copy } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { toast } from "sonner";
 import { addNotification } from "../utils/notifications";
+import { apiCreateOrder } from "../services/api";
 
 const STORE_PICKUP_ADDRESS = "Av. Paulista, 1000 - São Paulo, SP. Seg a Sex, 9h às 18h.";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
@@ -74,7 +75,7 @@ export function Checkout() {
     try {
       // Filtrar apenas produtos físicos para cálculo de frete
       const physicalItems = cartItems.filter((item) => item.type !== "ebook");
-      
+
       // Se não há produtos físicos, não há frete
       if (physicalItems.length === 0) {
         return { cost: 0, days: 0, service: "Digital" };
@@ -167,12 +168,12 @@ export function Checkout() {
         if (item.type === "ebook") return sum;
         return sum + item.quantity * 0.5;
       }, 0);
-      
+
       const fallbackCost = totalWeight > 0 ? Math.max(15.0, totalWeight * 10) : 0;
-      return { 
-        cost: Math.round(fallbackCost * 100) / 100, 
-        days: 7, 
-        service: "PAC" 
+      return {
+        cost: Math.round(fallbackCost * 100) / 100,
+        days: 7,
+        service: "PAC"
       };
     }
   };
@@ -255,17 +256,15 @@ export function Checkout() {
     }
   };
 
-  const saveOrderAndNavigate = (payment) => {
-    const order = {
-      id: `order-${Date.now()}`,
-      date: new Date().toISOString(),
+  const saveOrderAndNavigate = async (payment) => {
+    const orderData = {
       items: cart.map(({ id, title, author, type, price, quantity, image }) => ({ id, title, author, type, price, quantity, image })),
       subtotal: cartTotal,
-      shippingCost: hasPhysicalItems ? effectiveShippingCost : 0,
+      shipping_cost: hasPhysicalItems ? effectiveShippingCost : 0,
       total: orderTotal,
-      deliveryMethod: hasPhysicalItems ? deliveryMethod : "digital",
-      shippingInfo: hasPhysicalItems ? effectiveShippingInfo : null,
-      pickupAddress: deliveryMethod === "pickup" ? STORE_PICKUP_ADDRESS : null,
+      delivery_method: hasPhysicalItems ? deliveryMethod : "digital",
+      shipping_info: hasPhysicalItems ? effectiveShippingInfo : null,
+      pickup_address: deliveryMethod === "pickup" ? STORE_PICKUP_ADDRESS : null,
       customer: {
         name: customerName,
         email: customerEmail,
@@ -277,28 +276,28 @@ export function Checkout() {
         status: payment.status,
         pixKey: payment.pix?.pix_key ?? null,
       },
-      status: "processando",
     };
+
+    let order;
+    try {
+      // Criar pedido via API (persiste no MySQL + envia email de confirmação)
+      order = await apiCreateOrder(orderData);
+    } catch (e) {
+      console.warn("Falha ao criar pedido via API, salvando localmente:", e);
+      // Fallback: salvar localmente
+      order = {
+        ...orderData,
+        id: `order-${Date.now()}`,
+        date: new Date().toISOString(),
+        status: "processando",
+      };
+    }
+
+    // Backup local
     const orders = JSON.parse(localStorage.getItem("compia_orders") || "[]");
     orders.push(order);
     localStorage.setItem("compia_orders", JSON.stringify(orders));
 
-    // Notificações para cliente e admin
-    addNotification({
-      role: "customer",
-      orderId: order.id,
-      type: "order_created",
-      message: `Seu pedido ${order.id} foi recebido e está em processamento.`,
-    });
-
-    addNotification({
-      role: "admin",
-      orderId: order.id,
-      type: "order_created",
-      message: `Novo pedido ${order.id} realizado com total de R$ ${order.total
-        .toFixed(2)
-        .replace(".", ",")}.`,
-    });
     clearCart();
     toast.success("Pedido realizado com sucesso!");
     navigate("/order-success", { state: { order } });
@@ -323,12 +322,12 @@ export function Checkout() {
       card:
         paymentMethod === "card"
           ? {
-              holder_name: cardHolderName,
-              number: cardNumber,
-              expiry: cardExpiry,
-              cvv: cardCvv,
-              brand: cardBrand,
-            }
+            holder_name: cardHolderName,
+            number: cardNumber,
+            expiry: cardExpiry,
+            cvv: cardCvv,
+            brand: cardBrand,
+          }
           : null,
     };
 
@@ -441,10 +440,10 @@ export function Checkout() {
   const confirmButtonText = isProcessingPayment
     ? "Processando..."
     : paymentMethod === "pix" && pixPaymentData
-    ? "Confirmar pagamento PIX"
-    : paymentMethod === "pix"
-    ? "Gerar QR Code PIX"
-    : "Pagar e concluir pedido";
+      ? "Confirmar pagamento PIX"
+      : paymentMethod === "pix"
+        ? "Gerar QR Code PIX"
+        : "Pagar e concluir pedido";
 
   if (cart.length === 0) {
     return (
@@ -742,7 +741,7 @@ export function Checkout() {
           <div className="lg:col-span-1">
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100 sticky top-24">
               <h2 className="text-xl font-bold text-[#0A192F] mb-6">Resumo do Pedido</h2>
-              
+
               <div className="space-y-4 mb-6">
                 {cart.map((item) => (
                   <div key={item.id} className="flex justify-between text-sm">
@@ -764,10 +763,10 @@ export function Checkout() {
                       {deliveryMethod === "shipping" && cartTotal >= 200
                         ? "Grátis"
                         : shippingCost === null
-                        ? "A calcular"
-                        : effectiveShippingCost === 0
-                        ? "Grátis"
-                        : `R$ ${effectiveShippingCost.toFixed(2).replace('.', ',')}`}
+                          ? "A calcular"
+                          : effectiveShippingCost === 0
+                            ? "Grátis"
+                            : `R$ ${effectiveShippingCost.toFixed(2).replace('.', ',')}`}
                     </span>
                   </div>
                 )}

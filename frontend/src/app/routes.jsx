@@ -10,6 +10,7 @@ import { Profile } from "./pages/Profile";
 import { Admin } from "./pages/Admin";
 import { Contact } from "./pages/Contact";
 import { About } from "./pages/About";
+import { Login } from "./pages/Login";
 import { Link } from "react-router";
 
 function NotFound() {
@@ -45,6 +46,7 @@ export const router = createBrowserRouter([
       { path: "admin", Component: Admin },
       { path: "contact", Component: Contact },
       { path: "about", Component: About },
+      { path: "login", Component: Login },
       { path: "*", Component: NotFound },
     ],
   },
