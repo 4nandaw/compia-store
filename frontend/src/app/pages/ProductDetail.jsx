@@ -7,12 +7,16 @@ import { ProductCard } from "../components/ProductCard";
 
 export function ProductDetail() {
   const { id } = useParams();
-  const { products, getProductById } = useProducts();
+  const { products, getProductById, getReviewsForProduct, addReviewToProduct } = useProducts();
   const { addToCart } = useCart();
   const [quantity, setQuantity] = useState(1);
+  const [reviewRating, setReviewRating] = useState("5");
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewAuthor, setReviewAuthor] = useState("");
   
   const product = getProductById(id);
-  
+  const productReviews = product ? getReviewsForProduct(product.id) : [];
+
   if (!product) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50">
@@ -32,6 +36,18 @@ export function ProductDetail() {
     for (let i = 0; i < quantity; i++) {
         addToCart(product);
     }
+  };
+
+  const handleSubmitReview = (event) => {
+    event.preventDefault();
+    if (!product) return;
+    addReviewToProduct(product.id, {
+      rating: Number(reviewRating),
+      comment: reviewComment,
+      author: reviewAuthor,
+    });
+    setReviewComment("");
+    setReviewRating("5");
   };
 
   return (
@@ -81,8 +97,15 @@ export function ProductDetail() {
               {product.title}
             </h1>
             
-            <p className="text-lg text-gray-500 mb-4 font-medium">
+            <p className="text-lg text-gray-500 mb-2 font-medium">
               por <span className="text-[#0A192F]">{product.author}</span>
+            </p>
+            <p className="text-sm text-gray-500 mb-4 font-semibold text-[#0A192F]">
+              {product.type === "ebook"
+                ? "E-book"
+                : product.type === "kit"
+                ? "Kit (livro + materiais digitais)"
+                : "Livro físico"}
             </p>
 
             <div className="flex items-center gap-4 mb-6">
@@ -96,7 +119,9 @@ export function ProductDetail() {
                   />
                 ))}
               </div>
-              <span className="text-gray-500">({product.reviewsCount} avaliações)</span>
+              <span className="text-gray-500">
+                ({product.reviewsCount} {product.reviewsCount === 1 ? "avaliação" : "avaliações"})
+              </span>
             </div>
 
             <div className="mb-6">
@@ -162,7 +187,113 @@ export function ProductDetail() {
           </div>
         </div>
 
-        {/* Related Products */}
+          {/* Avaliações do Produto */}
+          <div className="mt-16 border-t border-gray-200 pt-10">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+              <div>
+                <h2 className="text-2xl font-bold text-[#0A192F] mb-3">Avaliações</h2>
+                <p className="text-sm text-gray-600 mb-4">
+                  Nota média:{" "}
+                  <span className="font-semibold text-[#0A192F]">
+                    {Number(product.rating || 0).toFixed(1)} / 5
+                  </span>{" "}
+                  ({product.reviewsCount} {product.reviewsCount === 1 ? "avaliação" : "avaliações"})
+                </p>
+                <form onSubmit={handleSubmitReview} className="space-y-4 bg-gray-50 rounded-xl p-4 border border-gray-100">
+                  <h3 className="text-sm font-semibold text-[#0A192F]">Deixe sua avaliação</h3>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-medium text-gray-700">Sua nota</label>
+                    <select
+                      value={reviewRating}
+                      onChange={(e) => setReviewRating(e.target.value)}
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                    >
+                      <option value="5">5 - Excelente</option>
+                      <option value="4">4 - Muito bom</option>
+                      <option value="3">3 - Bom</option>
+                      <option value="2">2 - Regular</option>
+                      <option value="1">1 - Ruim</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-medium text-gray-700">Seu nome (opcional)</label>
+                    <input
+                      type="text"
+                      value={reviewAuthor}
+                      onChange={(e) => setReviewAuthor(e.target.value)}
+                      placeholder="Como você quer aparecer"
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-xs font-medium text-gray-700">Comentário</label>
+                    <textarea
+                      value={reviewComment}
+                      onChange={(e) => setReviewComment(e.target.value)}
+                      rows={3}
+                      placeholder="Conte como foi sua experiência com este produto..."
+                      className="px-3 py-2 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[#00C2FF] resize-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full px-4 py-2 bg-[#00C2FF] text-white text-sm font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-colors"
+                  >
+                    Enviar avaliação
+                  </button>
+                </form>
+              </div>
+
+              <div className="lg:col-span-2">
+                {productReviews.length === 0 ? (
+                  <div className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6">
+                    Ainda não há avaliações cadastradas neste ambiente. Assim que clientes enviarem
+                    suas opiniões, elas aparecerão aqui.
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {productReviews
+                      .slice()
+                      .reverse()
+                      .map((review) => (
+                        <div
+                          key={review.id}
+                          className="border border-gray-100 rounded-xl p-4 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              <div className="flex text-yellow-400">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star
+                                    key={i}
+                                    size={14}
+                                    fill={i < review.rating ? "currentColor" : "none"}
+                                    className={i < review.rating ? "" : "text-gray-300"}
+                                  />
+                                ))}
+                              </div>
+                              <span className="text-xs text-gray-500">
+                                {review.author || "Cliente COMPIA"}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-gray-400">
+                              {review.createdAt
+                                ? new Date(review.createdAt).toLocaleDateString("pt-BR")
+                                : ""}
+                            </span>
+                          </div>
+                          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-line">
+                            {review.comment}
+                          </p>
+                        </div>
+                      ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Related Products */}
         {relatedProducts.length > 0 && (
           <div className="mt-20">
             <h2 className="text-2xl font-bold text-[#0A192F] mb-8">Produtos Relacionados</h2>
