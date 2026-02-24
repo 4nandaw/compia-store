@@ -57,7 +57,9 @@ export function ProductCard({ product }) {
               />
             ))}
           </div>
-          <span className="text-xs text-gray-400">({product.reviewsCount})</span>
+          <span className="text-xs text-gray-400">
+            ({product.reviewsCount} {product.reviewsCount === 1 ? "avaliação" : "avaliações"})
+          </span>
         </div>
 
         <div className="mt-auto flex items-center justify-between">
