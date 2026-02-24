@@ -1,10 +1,12 @@
 import { Link, useLocation } from "react-router";
-import { Search, ShoppingCart, User, Menu, X } from "lucide-react";
-import { useState } from "react";
+import { Search, ShoppingCart, User, Menu, X, Bell } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useCart } from "../../context/CartContext";
+import { getNotificationsByRole } from "../../utils/notifications";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const { cartCount } = useCart();
   const location = useLocation();
 
@@ -28,6 +30,13 @@ export function Header() {
     }
     return true;
   };
+
+  useEffect(() => {
+    // Atualiza contagem de notificações não lidas do cliente
+    const customerNotifs = getNotificationsByRole("customer");
+    const unread = customerNotifs.filter((n) => !n.read).length;
+    setUnreadNotifications(unread);
+  }, [location.pathname, location.search]);
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-[#0A192F]/10 bg-white/95 backdrop-blur-md">
@@ -73,6 +82,15 @@ export function Header() {
              <span className="absolute hidden group-hover:block top-full right-0 bg-[#0A192F] text-white text-xs px-2 py-1 rounded shadow-lg mt-1 w-max">
                Minha Conta
              </span>
+          </Link>
+
+          <Link to="/profile?tab=notifications" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative">
+            <Bell className="h-5 w-5 text-[#0A192F]" />
+            {unreadNotifications > 0 && (
+              <span className="absolute -top-1 -right-1 h-4 w-4 flex items-center justify-center rounded-full bg-red-500 text-[9px] font-bold text-white shadow-sm ring-2 ring-white">
+                {unreadNotifications > 9 ? "9+" : unreadNotifications}
+              </span>
+            )}
           </Link>
 
           <Link to="/cart" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative">
