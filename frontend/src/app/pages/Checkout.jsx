@@ -1,10 +1,28 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { ArrowLeft, Truck, MapPin, Download } from "lucide-react";
+import { ArrowLeft, Truck, MapPin, Download, Copy } from "lucide-react";
 import { useCart } from "../context/CartContext";
 import { toast } from "sonner";
 
 const STORE_PICKUP_ADDRESS = "Av. Paulista, 1000 - São Paulo, SP. Seg a Sex, 9h às 18h.";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1";
+
+const GATEWAY_OPTIONS = [
+  { value: "mercadopago", label: "Mercado Pago" },
+  { value: "pagseguro", label: "PagSeguro" },
+  { value: "stripe", label: "Stripe" },
+  { value: "paypal", label: "PayPal" },
+];
+
+const CARD_BRAND_OPTIONS = [
+  { value: "visa", label: "Visa" },
+  { value: "mastercard", label: "MasterCard" },
+  { value: "elo", label: "Elo" },
+  { value: "amex", label: "Amex" },
+  { value: "hipercard", label: "Hipercard" },
+];
+
+const REQUEST_TIMEOUT_MS = 15000;
 
 export function Checkout() {
   const { cart, cartTotal, clearCart } = useCart();
@@ -22,6 +40,18 @@ export function Checkout() {
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [shippingCost, setShippingCost] = useState(null);
   const [shippingInfo, setShippingInfo] = useState(null); // { cost, days, service }
+  const [customerName, setCustomerName] = useState("");
+  const [customerEmail, setCustomerEmail] = useState("");
+
+  const [paymentGateway, setPaymentGateway] = useState("mercadopago");
+  const [paymentMethod, setPaymentMethod] = useState("card");
+  const [cardBrand, setCardBrand] = useState("visa");
+  const [cardHolderName, setCardHolderName] = useState("");
+  const [cardNumber, setCardNumber] = useState("");
+  const [cardExpiry, setCardExpiry] = useState("");
+  const [cardCvv, setCardCvv] = useState("");
+  const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [pixPaymentData, setPixPaymentData] = useState(null);
 
   const formattedCep = cep.length > 5 ? `${cep.slice(0, 5)}-${cep.slice(5, 8)}` : cep;
 
@@ -208,17 +238,44 @@ export function Checkout() {
     }
   };
 
-  const handleConfirmOrder = () => {
+  const orderTotal = cartTotal + (hasPhysicalItems ? effectiveShippingCost : 0);
+
+  const fetchWithTimeout = async (url, options = {}, timeoutMs = REQUEST_TIMEOUT_MS) => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      return await fetch(url, {
+        ...options,
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  };
+
+  const saveOrderAndNavigate = (payment) => {
     const order = {
       id: `order-${Date.now()}`,
       date: new Date().toISOString(),
       items: cart.map(({ id, title, author, type, price, quantity, image }) => ({ id, title, author, type, price, quantity, image })),
       subtotal: cartTotal,
       shippingCost: hasPhysicalItems ? effectiveShippingCost : 0,
-      total: cartTotal + (hasPhysicalItems ? effectiveShippingCost : 0),
+      total: orderTotal,
       deliveryMethod: hasPhysicalItems ? deliveryMethod : "digital",
       shippingInfo: hasPhysicalItems ? effectiveShippingInfo : null,
       pickupAddress: deliveryMethod === "pickup" ? STORE_PICKUP_ADDRESS : null,
+      customer: {
+        name: customerName,
+        email: customerEmail,
+      },
+      payment: {
+        transactionId: payment.transaction_id,
+        gateway: payment.gateway,
+        method: payment.method,
+        status: payment.status,
+        pixKey: payment.pix?.pix_key ?? null,
+      },
     };
     const orders = JSON.parse(localStorage.getItem("compia_orders") || "[]");
     orders.push(order);
@@ -227,6 +284,148 @@ export function Checkout() {
     toast.success("Pedido realizado com sucesso!");
     navigate("/order-success", { state: { order } });
   };
+
+  const createPayment = async () => {
+    const payload = {
+      gateway: paymentGateway,
+      method: paymentMethod,
+      amount: Number(orderTotal.toFixed(2)),
+      currency: "BRL",
+      items: cart.map((item) => ({
+        id: String(item.id),
+        title: item.title,
+        quantity: item.quantity,
+        unit_price: Number(item.price),
+      })),
+      customer: {
+        name: customerName,
+        email: customerEmail,
+      },
+      card:
+        paymentMethod === "card"
+          ? {
+              holder_name: cardHolderName,
+              number: cardNumber,
+              expiry: cardExpiry,
+              cvv: cardCvv,
+              brand: cardBrand,
+            }
+          : null,
+    };
+
+    const response = await fetchWithTimeout(`${API_BASE_URL}/payments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const detail = errorData?.detail || "Não foi possível processar o pagamento.";
+      throw new Error(typeof detail === "string" ? detail : "Erro de validação no pagamento.");
+    }
+
+    return response.json();
+  };
+
+  const confirmPixPayment = async (transactionId) => {
+    const response = await fetchWithTimeout(`${API_BASE_URL}/payments/${transactionId}/confirm`, {
+      method: "POST",
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const detail = errorData?.detail || "Falha ao confirmar pagamento PIX.";
+      throw new Error(typeof detail === "string" ? detail : "Falha ao confirmar pagamento PIX.");
+    }
+
+    return response.json();
+  };
+
+  const handleConfirmOrder = async () => {
+    if (!customerName.trim()) {
+      toast.error("Informe o nome completo para continuar.");
+      return;
+    }
+
+    if (!customerEmail.trim()) {
+      toast.error("Informe um e-mail válido para continuar.");
+      return;
+    }
+
+    if (paymentMethod === "card") {
+      if (!cardHolderName.trim() || !cardNumber.trim() || !cardExpiry.trim() || !cardCvv.trim()) {
+        toast.error("Preencha todos os dados do cartão.");
+        return;
+      }
+    }
+
+    if (paymentMethod === "pix" && !pixPaymentData) {
+      toast.info("Gere o PIX para visualizar QR Code e chave aleatória.");
+    }
+
+    try {
+      setIsProcessingPayment(true);
+
+      if (paymentMethod === "pix" && pixPaymentData?.transaction_id) {
+        const confirmed = await confirmPixPayment(pixPaymentData.transaction_id);
+        saveOrderAndNavigate({
+          ...pixPaymentData,
+          status: confirmed.status,
+          message: confirmed.message,
+        });
+        return;
+      }
+
+      const paymentResult = await createPayment();
+
+      if (paymentMethod === "pix") {
+        setPixPaymentData(paymentResult);
+        toast.success("PIX gerado! Escaneie o QR Code ou copie a chave aleatória.");
+        return;
+      }
+
+      saveOrderAndNavigate(paymentResult);
+    } catch (error) {
+      console.error(error);
+      if (error.name === "AbortError") {
+        toast.error("Tempo limite excedido. Verifique se o backend está rodando em http://localhost:8000.");
+        return;
+      }
+      if (error instanceof TypeError) {
+        toast.error("Falha de conexão com o backend. Confira API/CORS e tente novamente.");
+        return;
+      }
+      toast.error(error.message || "Erro ao processar pagamento.");
+    } finally {
+      setIsProcessingPayment(false);
+    }
+  };
+
+  const handlePaymentMethodChange = (method) => {
+    setPaymentMethod(method);
+    setPixPaymentData(null);
+  };
+
+  const handleCopyPixKey = async () => {
+    if (!pixPaymentData?.pix?.pix_key) return;
+    try {
+      await navigator.clipboard.writeText(pixPaymentData.pix.pix_key);
+      toast.success("Chave PIX copiada!");
+    } catch {
+      toast.error("Não foi possível copiar a chave PIX.");
+    }
+  };
+
+  const confirmButtonText = isProcessingPayment
+    ? "Processando..."
+    : paymentMethod === "pix" && pixPaymentData
+    ? "Confirmar pagamento PIX"
+    : paymentMethod === "pix"
+    ? "Gerar QR Code PIX"
+    : "Pagar e concluir pedido";
 
   if (cart.length === 0) {
     return (
@@ -299,8 +498,23 @@ export function Checkout() {
                 </h2>
                 <form className="space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <input type="text" placeholder="Nome completo" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
-                    <input type="email" placeholder="E-mail" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
+                    <input
+                      type="text"
+                      placeholder="Nome completo"
+                      className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                      value={customerName}
+                      onChange={(event) => {
+                        setCustomerName(event.target.value);
+                        if (!cardHolderName) setCardHolderName(event.target.value);
+                      }}
+                    />
+                    <input
+                      type="email"
+                      placeholder="E-mail"
+                      className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                      value={customerEmail}
+                      onChange={(event) => setCustomerEmail(event.target.value)}
+                    />
                   </div>
                   {deliveryMethod === "shipping" && (
                     <>
@@ -350,11 +564,157 @@ export function Checkout() {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-xl font-bold text-[#0A192F] mb-4">Informações de Pagamento</h2>
               <form className="space-y-4">
-                <input type="text" placeholder="Número do cartão" className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
-                <div className="grid grid-cols-2 gap-4">
-                  <input type="text" placeholder="Validade" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
-                  <input type="text" placeholder="CVV" className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]" />
+                {!hasPhysicalItems && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input
+                      type="text"
+                      placeholder="Nome completo"
+                      className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                      value={customerName}
+                      onChange={(event) => {
+                        setCustomerName(event.target.value);
+                        if (!cardHolderName) setCardHolderName(event.target.value);
+                      }}
+                    />
+                    <input
+                      type="email"
+                      placeholder="E-mail"
+                      className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                      value={customerEmail}
+                      onChange={(event) => setCustomerEmail(event.target.value)}
+                    />
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Gateway de pagamento</label>
+                  <select
+                    className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                    value={paymentGateway}
+                    onChange={(event) => setPaymentGateway(event.target.value)}
+                  >
+                    {GATEWAY_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <label className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${paymentMethod === "card" ? "border-[#00C2FF] bg-[#00C2FF]/5" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      value="card"
+                      checked={paymentMethod === "card"}
+                      onChange={() => handlePaymentMethodChange("card")}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold text-[#0A192F]">Cartão</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-3 rounded-lg border-2 cursor-pointer transition-colors ${paymentMethod === "pix" ? "border-[#00C2FF] bg-[#00C2FF]/5" : "border-gray-200 hover:border-gray-300"}`}>
+                    <input
+                      type="radio"
+                      name="payment-method"
+                      value="pix"
+                      checked={paymentMethod === "pix"}
+                      onChange={() => handlePaymentMethodChange("pix")}
+                      className="sr-only"
+                    />
+                    <span className="font-semibold text-[#0A192F]">PIX</span>
+                  </label>
+                </div>
+
+                {paymentMethod === "card" && (
+                  <>
+                    <p className="text-sm text-gray-600">Bandeiras aceitas: Visa, MasterCard, Elo, Amex e Hipercard.</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <input
+                        type="text"
+                        placeholder="Nome no cartão"
+                        className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                        value={cardHolderName}
+                        onChange={(event) => setCardHolderName(event.target.value)}
+                      />
+                      <select
+                        className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                        value={cardBrand}
+                        onChange={(event) => setCardBrand(event.target.value)}
+                      >
+                        {CARD_BRAND_OPTIONS.map((brand) => (
+                          <option key={brand.value} value={brand.value}>
+                            {brand.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder="Número do cartão"
+                      className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                      value={cardNumber}
+                      onChange={(event) => setCardNumber(event.target.value.replace(/\D/g, "").slice(0, 19))}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="Validade (MM/AA)"
+                        className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                        value={cardExpiry}
+                        onChange={(event) => {
+                          const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
+                          const value = digits.length > 2 ? `${digits.slice(0, 2)}/${digits.slice(2)}` : digits;
+                          setCardExpiry(value);
+                        }}
+                      />
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        placeholder="CVV"
+                        className="px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#00C2FF]"
+                        value={cardCvv}
+                        onChange={(event) => setCardCvv(event.target.value.replace(/\D/g, "").slice(0, 4))}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {paymentMethod === "pix" && (
+                  <div className="space-y-3 bg-gray-50 border border-gray-200 rounded-lg p-4">
+                    <p className="text-sm text-gray-700">Gere o PIX para visualizar QR Code e chave aleatória.</p>
+
+                    {pixPaymentData?.pix && (
+                      <>
+                        <div className="flex justify-center">
+                          <img
+                            src={pixPaymentData.pix.qr_code_url}
+                            alt="QR Code PIX"
+                            className="w-52 h-52 rounded-lg border border-gray-200"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm text-gray-700">
+                            Chave aleatória: <span className="font-semibold break-all">{pixPaymentData.pix.pix_key}</span>
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleCopyPixKey}
+                            className="inline-flex items-center gap-2 px-3 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                          >
+                            <Copy size={16} /> Copiar chave PIX
+                          </button>
+                          <p className="text-xs text-gray-500">
+                            Expira em: {new Date(pixPaymentData.pix.expires_at).toLocaleString("pt-BR")}
+                          </p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </form>
             </div>
           </div>
@@ -401,8 +761,7 @@ export function Checkout() {
                   <span>Total</span>
                   <span>
                     R$ {(
-                      cartTotal +
-                      (hasPhysicalItems ? effectiveShippingCost : 0)
+                      orderTotal
                     ).toFixed(2).replace('.', ',')}
                   </span>
                 </div>
@@ -411,9 +770,10 @@ export function Checkout() {
               <button
                 type="button"
                 onClick={handleConfirmOrder}
+                disabled={isProcessingPayment}
                 className="w-full px-6 py-4 bg-[#00C2FF] text-white font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-all shadow-lg"
               >
-                Confirmar Pedido
+                {confirmButtonText}
               </button>
             </div>
           </div>
