@@ -1,12 +1,11 @@
 from fastapi import APIRouter
 
 from app.core.config import get_settings
+from app.api.v1.endpoints import payments
 
 settings = get_settings()
 
 api_router = APIRouter(prefix=settings.API_V1_PREFIX)
 
-# Aqui serão incluídos, futuramente, os módulos de endpoints, por exemplo:
-# from app.api.v1.endpoints import produtos
-# api_router.include_router(produtos.router, prefix="/products", tags=["products"])
+api_router.include_router(payments.router, prefix="/payments", tags=["payments"])
 

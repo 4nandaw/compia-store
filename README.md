@@ -49,8 +49,6 @@ uvicorn app.main:app --reload --port 8000
 
 A API ficará acessível em `http://localhost:8000`.
 
-> Por enquanto, apenas a estrutura está criada.
-
 ---
 
 #### 4. Frontend (React + Vite + TS)
@@ -67,3 +65,24 @@ O frontend ficará acessível em `http://localhost:5173`.
 
 Certifique-se de que o backend esteja rodando na porta configurada
 em `VITE_API_BASE_URL` (por padrão, `http://localhost:8000/api/v1`).
+
+---
+
+### Pagamentos
+
+O checkout agora possui integração de pagamento via API backend (`/api/v1/payments`) com suporte a:
+
+- Gateways: **PagSeguro**, **Mercado Pago**, **Stripe** e **PayPal**
+- Cartão de crédito com bandeiras: **Visa**, **MasterCard**, **Elo**, **Amex** e **Hipercard**
+- **PIX** com geração de **QR Code** e **chave aleatória**
+
+#### Fluxos implementados
+
+- **Cartão**: cria pagamento e conclui o pedido imediatamente quando aprovado.
+- **PIX**: gera QR Code/chave aleatória, depois permite confirmação do pagamento para concluir o pedido.
+
+#### Endpoints de pagamento
+
+- `GET /api/v1/payments/options` — lista métodos, gateways e bandeiras.
+- `POST /api/v1/payments` — cria pagamento (cartão ou PIX).
+- `POST /api/v1/payments/{transaction_id}/confirm` — confirma pagamento PIX.
