@@ -1,9 +1,12 @@
 import { Link } from "react-router";
 import { Trash2, Plus, Minus, ArrowRight, ShoppingBag } from "lucide-react";
 import { useCart } from "../context/CartContext";
+import { useAuth } from "../context/AuthContext";
 
 export function Cart() {
   const { cart, removeFromCart, updateQuantity, cartTotal, clearCart } = useCart();
+  const { isLoggedIn } = useAuth();
+  const checkoutLink = isLoggedIn ? "/checkout" : "/login?redirect=/checkout";
 
   const hasFreeShipping = cartTotal >= 200;
 
@@ -121,7 +124,7 @@ export function Cart() {
               </div>
 
               <Link
-                to="/checkout"
+                to={checkoutLink}
                 className="w-full block text-center px-6 py-4 bg-[#00C2FF] text-white font-bold rounded-lg hover:bg-[#00C2FF]/90 transition-all shadow-lg shadow-blue-200 mb-4 flex items-center justify-center gap-2"
               >
                 Finalizar Compra
