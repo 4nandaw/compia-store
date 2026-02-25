@@ -3,12 +3,25 @@ import { Search, ShoppingCart, User, Menu, X, Bell, LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useCart } from "../../context/CartContext";
 import { useAuth } from "../../context/AuthContext";
+import { getNotificationsByRole } from "../../utils/notifications";
 
 export function Header() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const { cartCount } = useCart();
   const { isLoggedIn, user, isAdmin } = useAuth();
   const location = useLocation();
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setUnreadCount(0);
+      return;
+    }
+    const role = isAdmin ? "admin" : "customer";
+    const list = getNotificationsByRole(role);
+    const count = list.filter((n) => !n.read).length;
+    setUnreadCount(count);
+  }, [isLoggedIn, isAdmin, location.pathname]);
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
 
@@ -70,7 +83,10 @@ export function Header() {
           </div>
 
           {isLoggedIn ? (
-            <Link to="/profile" className="p-2 hover:bg-gray-100 rounded-full transition-colors relative group flex items-center gap-2">
+            <Link
+              to={isAdmin ? "/admin" : "/profile"}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors relative group flex items-center gap-2"
+            >
               <User className="h-5 w-5 text-[#0A192F]" />
               <span className="hidden md:inline text-sm font-medium text-[#0A192F] max-w-[100px] truncate">
                 {user?.name?.split(" ")[0]}
@@ -88,6 +104,20 @@ export function Header() {
             >
               <LogIn className="h-4 w-4" />
               <span className="hidden md:inline">Entrar</span>
+            </Link>
+          )}
+
+          {isLoggedIn && (
+            <Link
+              to={isAdmin ? "/admin?tab=notifications" : "/profile?tab=notifications"}
+              className="p-2 hover:bg-gray-100 rounded-full transition-colors relative"
+            >
+              <Bell className="h-5 w-5 text-[#0A192F]" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white ring-2 ring-white">
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              )}
             </Link>
           )}
 
