@@ -2,6 +2,7 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
+from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -88,6 +89,15 @@ class PixPaymentData(BaseModel):
     qr_code_text: str
     qr_code_url: str
     expires_at: datetime
+
+    @field_validator("pix_key")
+    @classmethod
+    def validate_random_pix_key(cls, value: str) -> str:
+        try:
+            parsed = UUID(value)
+        except ValueError as exc:
+            raise ValueError("Chave PIX aleatória inválida") from exc
+        return str(parsed)
 
 
 class PaymentResponse(BaseModel):

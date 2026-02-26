@@ -17,10 +17,52 @@ from app.schemas.payment import (
 router = APIRouter()
 
 _PAYMENT_STORE: dict[str, PaymentResponse] = {}
+_PIX_FIXED_KEY = "6841c4e9-5744-434c-81d0-821b48846b22"
 
 
-def _to_brl_cents(amount: Decimal) -> int:
-    return int(amount * 100)
+def _format_emv_field(field_id: str, value: str) -> str:
+    return f"{field_id}{len(value):02d}{value}"
+
+
+def _calculate_crc16_ccitt(payload: str) -> str:
+    crc = 0xFFFF
+    polynomial = 0x1021
+
+    for char in payload:
+        crc ^= ord(char) << 8
+        for _ in range(8):
+            if crc & 0x8000:
+                crc = ((crc << 1) ^ polynomial) & 0xFFFF
+            else:
+                crc = (crc << 1) & 0xFFFF
+
+    return f"{crc:04X}"
+
+
+def _build_pix_br_code(pix_key: str, merchant_name: str, merchant_city: str, amount: Decimal) -> str:
+    merchant_account_info = (
+        _format_emv_field("00", "BR.GOV.BCB.PIX")
+        + _format_emv_field("01", pix_key)
+    )
+
+    payload = "".join(
+        [
+            _format_emv_field("00", "01"),
+            _format_emv_field("01", "12"),
+            _format_emv_field("26", merchant_account_info),
+            _format_emv_field("52", "0000"),
+            _format_emv_field("53", "986"),
+            _format_emv_field("54", f"{amount:.2f}"),
+            _format_emv_field("58", "BR"),
+            _format_emv_field("59", merchant_name[:25]),
+            _format_emv_field("60", merchant_city[:15]),
+            _format_emv_field("62", _format_emv_field("05", "***")),
+            "6304",
+        ]
+    )
+
+    crc = _calculate_crc16_ccitt(payload)
+    return f"{payload}{crc}"
 
 
 @router.get("/options")
@@ -44,12 +86,12 @@ def create_payment(payload: PaymentCreateRequest) -> PaymentResponse:
 
     if payload.method == PaymentMethod.PIX:
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
-        pix_key = str(uuid4())
-        amount_cents = _to_brl_cents(payload.amount)
-        qr_code_text = (
-            f"00020126330014BR.GOV.BCB.PIX0114{pix_key}"
-            f"520400005303986540{payload.amount:.2f}5802BR5912COMPIA STORE"
-            f"6009SAO PAULO62070503***6304{amount_cents:04d}"
+        pix_key = _PIX_FIXED_KEY
+        qr_code_text = _build_pix_br_code(
+            pix_key=pix_key,
+            merchant_name="COMPIA STORE",
+            merchant_city="SAO PAULO",
+            amount=payload.amount,
         )
         qr_code_url = (
             "https://api.qrserver.com/v1/create-qr-code/"

@@ -25,6 +25,8 @@ const CARD_BRAND_OPTIONS = [
 ];
 
 const REQUEST_TIMEOUT_MS = 15000;
+const RANDOM_PIX_KEY_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function Checkout() {
   const { cart, cartTotal, clearCart } = useCart();
@@ -37,7 +39,7 @@ export function Checkout() {
   const [deliveryMethod, setDeliveryMethod] = useState("shipping"); // 'shipping' | 'pickup'
   const [cep, setCep] = useState("");
   const [address, setAddress] = useState("");
-  const [city, setCity] = useState("");
+  const [city, setCity] = useState(""); 
   const [stateUf, setStateUf] = useState("");
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [shippingCost, setShippingCost] = useState(null);
@@ -341,8 +343,18 @@ export function Checkout() {
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      const detail = errorData?.detail || "Não foi possível processar o pagamento.";
-      throw new Error(typeof detail === "string" ? detail : "Erro de validação no pagamento.");
+      const detail = errorData?.detail;
+      const normalizedDetail = Array.isArray(detail)
+        ? detail
+          .map((entry) => entry?.msg)
+          .filter(Boolean)
+          .join(" | ")
+        : detail;
+      throw new Error(
+        typeof normalizedDetail === "string" && normalizedDetail.trim()
+          ? normalizedDetail
+          : "Não foi possível processar o pagamento."
+      );
     }
 
     return response.json();
@@ -373,6 +385,11 @@ export function Checkout() {
       return;
     }
 
+    if (!EMAIL_REGEX.test(customerEmail.trim())) {
+      toast.error("E-mail inválido. Use um endereço no formato nome@dominio.com.");
+      return;
+    }
+
     if (paymentMethod === "card") {
       if (!cardHolderName.trim() || !cardNumber.trim() || !cardExpiry.trim() || !cardCvv.trim()) {
         toast.error("Preencha todos os dados do cartão.");
@@ -388,6 +405,12 @@ export function Checkout() {
       setIsProcessingPayment(true);
 
       if (paymentMethod === "pix" && pixPaymentData?.transaction_id) {
+        const pixKey = pixPaymentData?.pix?.pix_key;
+        if (!pixKey || !RANDOM_PIX_KEY_REGEX.test(pixKey)) {
+          toast.error("Chave PIX aleatória inválida. Gere o PIX novamente.");
+          return;
+        }
+
         const confirmed = await confirmPixPayment(pixPaymentData.transaction_id);
         saveOrderAndNavigate({
           ...pixPaymentData,
