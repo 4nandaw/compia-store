@@ -1,11 +1,13 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "../context/AuthContext";
 import { LogIn, UserPlus } from "lucide-react";
 
 export function Login() {
     const { login, register, isLoggedIn } = useAuth();
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirectTo = searchParams.get("redirect") || "/profile";
     const [isRegister, setIsRegister] = useState(false);
     const [name, setName] = useState("");
     const [email, setEmail] = useState("");
@@ -13,7 +15,7 @@ export function Login() {
     const [loading, setLoading] = useState(false);
 
     if (isLoggedIn) {
-        navigate("/profile");
+        navigate(redirectTo);
         return null;
     }
 
@@ -26,7 +28,7 @@ export function Login() {
             } else {
                 await login(email, password);
             }
-            navigate("/profile");
+            navigate(redirectTo);
         } catch {
             // error toast is handled by AuthContext
         } finally {

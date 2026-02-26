@@ -3,7 +3,12 @@ import { Link, useSearchParams, useNavigate } from "react-router";
 import { User, Package, Download, Settings, LogOut, Bell } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "../context/AuthContext";
-import { fetchOrders, apiCancelOrder, fetchNotifications, apiMarkNotificationsRead } from "../services/api";
+import {
+  fetchOrders,
+  apiCancelOrder,
+  fetchNotifications,
+  apiMarkNotificationsRead,
+} from "../services/api";
 
 const VALID_TABS = ["orders", "downloads", "notifications", "settings"];
 
@@ -23,8 +28,10 @@ export function Profile() {
   useEffect(() => {
     if (!isLoggedIn) {
       navigate("/login");
+    } else if (isAdmin) {
+      navigate("/admin");
     }
-  }, [isLoggedIn, navigate]);
+  }, [isLoggedIn, isAdmin, navigate]);
 
   useEffect(() => {
     if (tabFromUrl && VALID_TABS.includes(tabFromUrl) && tabFromUrl !== activeTab) {
@@ -99,7 +106,7 @@ export function Profile() {
     navigate("/");
   };
 
-  if (!isLoggedIn) return null;
+  if (!isLoggedIn || isAdmin) return null;
 
   return (
     <div className="bg-gray-50 min-h-screen py-10">
@@ -125,20 +132,34 @@ export function Profile() {
               </div>
 
               <nav className="p-2 space-y-1">
-                <button
-                  type="button"
-                  onClick={() => setActiveTabAndUrl("orders")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'orders' ? 'bg-[#00C2FF]/10 text-[#00C2FF]' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <Package size={18} /> Meus Pedidos
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setActiveTabAndUrl("downloads")}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === 'downloads' ? 'bg-[#00C2FF]/10 text-[#00C2FF]' : 'text-gray-600 hover:bg-gray-50'}`}
-                >
-                  <Download size={18} /> Downloads
-                </button>
+                {!isAdmin && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTabAndUrl("orders")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === "orders" ? "bg-[#00C2FF]/10 text-[#00C2FF]" : "text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      <Package size={18} /> Meus Pedidos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTabAndUrl("downloads")}
+                      className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === "downloads" ? "bg-[#00C2FF]/10 text-[#00C2FF]" : "text-gray-600 hover:bg-gray-50"}`}
+                    >
+                      <Download size={18} /> Downloads
+                    </button>
+                  </>
+                )}
+
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTabAndUrl("admin")}
+                    className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${activeTab === "admin" ? "bg-[#00C2FF]/10 text-[#00C2FF]" : "text-gray-600 hover:bg-gray-50"}`}
+                  >
+                    <Settings size={18} /> Painel Administrativo
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setActiveTabAndUrl("notifications")}
@@ -154,14 +175,6 @@ export function Profile() {
                 >
                   <Settings size={18} /> Configurações
                 </button>
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium text-purple-600 hover:bg-purple-50 transition-colors mt-4"
-                  >
-                    <Settings size={18} /> Gestão de Produtos
-                  </Link>
-                )}
                 <button
                   type="button"
                   onClick={handleLogout}
@@ -173,9 +186,9 @@ export function Profile() {
             </div>
           </aside>
 
-          {/* Content */}
-          <div className="flex-1">
-            {activeTab === "orders" && (
+            {/* Content */}
+            <div className="flex-1">
+            {!isAdmin && activeTab === "orders" && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-xl font-bold text-[#0A192F] mb-6">Histórico de Pedidos</h2>
                 {orders.length === 0 ? (
@@ -343,10 +356,10 @@ export function Profile() {
               </div>
             )}
 
-            {activeTab === "downloads" && (
+            {!isAdmin && activeTab === "downloads" && (
               <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
                 <h2 className="text-xl font-bold text-[#0A192F] mb-2">Meus E-books</h2>
-                <p className="text-sm text-gray-500 mb-6">Área restrita: e-books comprados ficam disponíveis aqui para download.</p>
+                <p className="text-sm text-gray-500 mb-6">E-books comprados ficam disponíveis aqui para download.</p>
                 {purchasedEbooks.length === 0 ? (
                   <div className="text-center py-12 border border-dashed border-gray-200 rounded-xl">
                     <Download className="w-12 h-12 text-gray-300 mx-auto mb-3" />
@@ -435,6 +448,12 @@ export function Profile() {
                     Salvar Alterações
                   </button>
                 </form>
+              </div>
+            )}
+
+            {isAdmin && activeTab === "admin" && (
+              <div className="mt-0">
+                <Admin />
               </div>
             )}
           </div>
