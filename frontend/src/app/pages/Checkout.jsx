@@ -25,6 +25,7 @@ const CARD_BRAND_OPTIONS = [
 ];
 
 const REQUEST_TIMEOUT_MS = 15000;
+const RANDOM_PIX_KEY_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function Checkout() {
   const { cart, cartTotal, clearCart } = useCart();
@@ -388,6 +389,12 @@ export function Checkout() {
       setIsProcessingPayment(true);
 
       if (paymentMethod === "pix" && pixPaymentData?.transaction_id) {
+        const pixKey = pixPaymentData?.pix?.pix_key;
+        if (!pixKey || !RANDOM_PIX_KEY_REGEX.test(pixKey)) {
+          toast.error("Chave PIX aleatória inválida. Gere o PIX novamente.");
+          return;
+        }
+
         const confirmed = await confirmPixPayment(pixPaymentData.transaction_id);
         saveOrderAndNavigate({
           ...pixPaymentData,
