@@ -2,8 +2,10 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from urllib.parse import quote_plus
 from uuid import uuid4
+from sqlalchemy.orm import Session
+from app.core.database import get_db
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 
 from app.schemas.payment import (
     PaymentConfirmResponse,
@@ -13,6 +15,10 @@ from app.schemas.payment import (
     PaymentStatus,
     PixPaymentData,
 )
+
+from app.dependencies.auth import get_current_user
+from app.models.user import User
+from app.services.audit_service import log_activity
 
 router = APIRouter()
 
@@ -75,7 +81,10 @@ def list_payment_options() -> dict[str, list[str]]:
 
 
 @router.post("", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
-def create_payment(payload: PaymentCreateRequest) -> PaymentResponse:
+def create_payment( request: Request,
+    payload: PaymentCreateRequest,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),) -> PaymentResponse:
     if payload.method == PaymentMethod.CARD and payload.card is None:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -112,7 +121,24 @@ def create_payment(payload: PaymentCreateRequest) -> PaymentResponse:
                 expires_at=expires_at,
             ),
         )
-        _PAYMENT_STORE[transaction_id] = response
+        _PAYMENT_STORE[transaction_id] = {
+            "payment": response,
+            "owner_email": user.email,
+        }
+
+        log_activity(
+            db=db,
+            user_email=user.email,
+            action="payment.create",
+            entity="payment",
+            entity_id=transaction_id,
+            ip=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+            meta={"method": "pix", "amount": float(payload.amount), "gateway": payload.gateway},
+        )
+
+        db.commit()
+
         return response
 
     response = PaymentResponse(
@@ -124,20 +150,63 @@ def create_payment(payload: PaymentCreateRequest) -> PaymentResponse:
         currency=payload.currency,
         message="Pagamento com cartão aprovado.",
     )
-    _PAYMENT_STORE[transaction_id] = response
+
+    log_activity(
+        db=db,
+        user_email=user.email,
+        action="payment.create",
+        entity="payment",
+        entity_id=transaction_id,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+        meta={"method": "card", "amount": float(payload.amount), "gateway": payload.gateway},
+    )
+
+    db.commit()
+
+    _PAYMENT_STORE[transaction_id] = {
+        "payment": response,
+        "owner_email": user.email,
+    }
+
     return response
 
 
 @router.post("/{transaction_id}/confirm", response_model=PaymentConfirmResponse)
-def confirm_pix_payment(transaction_id: str) -> PaymentConfirmResponse:
-    payment = _PAYMENT_STORE.get(transaction_id)
-    if payment is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Transação não encontrada.")
+def confirm_pix_payment(
+    request: Request,
+    transaction_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> PaymentConfirmResponse:
+
+    record = _PAYMENT_STORE.get(transaction_id)
+
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Transação não encontrada.",
+        )
+
+    payment = record["payment"]
+    owner_email = record["owner_email"]
+
+    if user.role not in ("admin", "seller") and user.email != owner_email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem permissão para confirmar este pagamento.",
+        )
 
     if payment.method != PaymentMethod.PIX:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Somente pagamentos PIX podem ser confirmados por este endpoint.",
+        )
+
+    if payment.pix and datetime.now(timezone.utc) > payment.pix.expires_at:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PIX expirado.",
         )
 
     if payment.status == PaymentStatus.APPROVED:
@@ -149,7 +218,23 @@ def confirm_pix_payment(transaction_id: str) -> PaymentConfirmResponse:
 
     payment.status = PaymentStatus.APPROVED
     payment.message = "Pagamento PIX confirmado com sucesso."
-    _PAYMENT_STORE[transaction_id] = payment
+
+    _PAYMENT_STORE[transaction_id] = {
+        "payment": payment,
+        "owner_email": owner_email,
+    }
+
+    log_activity(
+        db=db,
+        user_email=user.email,
+        action="payment.pix_confirm",
+        entity="payment",
+        entity_id=transaction_id,
+        ip=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+
+    db.commit()
 
     return PaymentConfirmResponse(
         transaction_id=transaction_id,

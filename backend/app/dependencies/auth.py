@@ -31,13 +31,12 @@ def get_current_user(
     return user
 
 
-def require_admin(
-    user: User = Depends(get_current_user),
-) -> User:
-    """Verifica se o usuário tem role 'admin'."""
-    if user.role != "admin":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores.",
-        )
-    return user
+def require_roles(*allowed_roles: str):
+    def guard(user: User = Depends(get_current_user)) -> User:
+        if user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sem permissão para acessar este recurso.",
+            )
+        return user
+    return guard

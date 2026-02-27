@@ -61,13 +61,27 @@ def seed_data(db: Session):
             name="Administrador COMPIA",
             role="admin",
         )
+        editor = User(
+            email="editor@compia.com",
+            password="editor123",
+            name="Editor COMPIA",
+            role="editor",
+        )
+
+        seller = User(
+            email="vendedor@compia.com",
+            password="vendedor123",
+            name="Vendedor COMPIA",
+            role="seller",
+        )
+
         user = User(
             email="usuario@compia.com",
             password="user123",
             name="Usuário Teste",
             role="user",
         )
-        db.add_all([admin, user])
+        db.add_all([admin, user, editor, seller])
         db.commit()
         print("[seed] ✓ Usuários criados (admin@compia.com / usuario@compia.com)")
 
