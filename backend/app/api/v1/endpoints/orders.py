@@ -74,7 +74,7 @@ def create_order(
 
     # Notificações
     notif_customer = Notification(
-        role="customer",
+        role="user",
         order_id=order.id,
         type="order_created",
         message=f"Seu pedido {order.id} foi recebido e está em processamento.",
@@ -146,7 +146,7 @@ def update_order_status(
     message = messages.get(status_lower, f"O status do pedido {order_id} foi atualizado para {payload.status}.")
 
     notif = Notification(
-        role="customer",
+        role="user",
         order_id=order_id,
         type="order_status",
         message=message,

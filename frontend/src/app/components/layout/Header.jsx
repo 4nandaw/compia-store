@@ -17,7 +17,7 @@ export function Header() {
       setUnreadCount(0);
       return;
     }
-    const role = isAdmin ? "admin" : "customer";
+    const role = isAdmin ? "admin" : "user";
     const list = getNotificationsByRole(role);
     const count = list.filter((n) => !n.read).length;
     setUnreadCount(count);

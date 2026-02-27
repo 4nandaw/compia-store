@@ -14,8 +14,6 @@ from app.services.audit_service import log_activity
 
 router = APIRouter()
 
-BACKOFFICE_ROLES = {"admin", "editor", "seller"}
-
 @router.get("")
 def list_notifications(
     db: Session = Depends(get_db),
@@ -23,13 +21,13 @@ def list_notifications(
 ):
     """Listar notificações baseado na role do usuário."""
     
-    role = "admin" if user.role in BACKOFFICE_ROLES else "customer"
     notifications = (
         db.query(Notification)
-        .filter(Notification.role == role)
+        .filter(Notification.role == user.role)
         .order_by(Notification.created_at.desc())
         .all()
     )
+    
     return [NotificationResponse.model_validate(n).model_dump() for n in notifications]
 
 
@@ -39,11 +37,9 @@ def mark_notifications_read(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Marcar todas as notificações como lidas."""
-    role = "admin" if user.role in BACKOFFICE_ROLES else "customer"
 
     updated = db.query(Notification).filter(
-        Notification.role == role,
+        Notification.role == user.role,
         Notification.read == False,
     ).update({"read": True})
 
@@ -55,7 +51,7 @@ def mark_notifications_read(
         entity_id="all",
         ip=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
-        meta={"role": role, "count": int(updated)},
+        meta={"role": user.role, "count": int(updated)},
     )
     
     db.commit()

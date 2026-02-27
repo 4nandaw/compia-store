@@ -19,7 +19,7 @@ def register(
     request: Request,
     payload: UserRegister,
     db: Session = Depends(get_db)):
-    """Registrar novo usuário (role 'customer')."""
+    """Registrar novo usuário (role 'user')."""
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
         raise HTTPException(
@@ -31,7 +31,7 @@ def register(
         email=payload.email,
         password=payload.password,
         name=payload.name,
-        role="customer",
+        role="user",
     )
 
     db.add(user)
